@@ -50,7 +50,7 @@ type RatioBarProps = { current: number; target: number };
 function RatioBar({ current, target }: RatioBarProps) {
   const diff = current - target;
   const barColor =
-    Math.abs(diff) <= 2 ? "bg-blue-500" :
+    Math.abs(diff) <= 5 ? "bg-blue-500" :
     diff > 0 ? "bg-yellow-500" : "bg-red-500";
 
   return (
@@ -65,7 +65,7 @@ function RatioBar({ current, target }: RatioBarProps) {
         {current.toFixed(1)}%
       </span>
       <span className={`text-xs tabular-nums w-16 text-right font-medium ${
-        Math.abs(diff) <= 2 ? "text-gray-500" :
+        Math.abs(diff) <= 5 ? "text-gray-500" :
         diff > 0 ? "text-yellow-400" : "text-red-400"
       }`}>
         {diff > 0 ? "+" : ""}{diff.toFixed(1)}%
@@ -193,7 +193,7 @@ export default function AssetsPage() {
             const target     = getTarget(asset.asset_name);
             const diff       = asset.current_ratio - target;
             const moveAmount = calcMoveAmount(asset);
-            const needsAction = target > 0 && Math.abs(diff) > 2;
+            const needsAction = target > 0 && Math.abs(diff) > 5;
 
             return (
               <div key={asset.asset_name}>
@@ -255,7 +255,7 @@ export default function AssetsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {target > 0 && (
-                        <span className="text-xs text-gray-500">このシナリオの目標 {target}%</span>
+                        <span className="text-xs text-gray-500">このシナリオの目標: {target}%</span>
                       )}
                       {buyAmount !== null && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-green-400/10 text-green-400">

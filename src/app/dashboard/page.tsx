@@ -36,7 +36,7 @@ export default function DashboardPage() {
     <>
       {/* UserID */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 mb-8">
-        <p className="text-xs text-gray-500 mb-1">UserID（スプレッドシートの B1 にコピペ）</p>
+        <p className="text-xs text-gray-500 mb-1">UserID（スプレッドシートの B1 に貼り付けてください）</p>
         <p className="font-mono text-xs text-blue-400 break-all">{user.id}</p>
       </div>
 

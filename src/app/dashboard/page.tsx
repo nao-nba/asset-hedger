@@ -12,11 +12,14 @@ export default function DashboardPage() {
   if (!user) return null;
 
   // 投資資金 = 全体資産の待機資金 + 明細の保有アセット評価額合計
-  const investFunds = latest
-    ? sum(latest.summary_data.investment_funds) +
-      latest.assets_data
+  const waitingFunds = latest ? sum(latest.summary_data.investment_funds ?? []) : null;
+  const assetsFunds  = latest
+    ? latest.assets_data
         .filter((a) => !a.is_watchlist)
         .reduce((acc, a) => acc + a.current_value_base, 0)
+    : null;
+  const investFunds = (waitingFunds !== null && assetsFunds !== null)
+    ? waitingFunds + assetsFunds
     : null;
 
   const livingFunds = latest ? sum(latest.summary_data.living_funds) : null;
@@ -32,7 +35,7 @@ export default function DashboardPage() {
 
   const chartData = history.map((s) => {
     const invest =
-      sum(s.summary_data.investment_funds) +
+      sum(s.summary_data.investment_funds ?? []) +
       s.assets_data
         .filter((a) => !a.is_watchlist)
         .reduce((acc, a) => acc + a.current_value_base, 0);
@@ -74,7 +77,7 @@ export default function DashboardPage() {
           </div>
 
           {/* サマリーカード */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
             {[
               {
                 label: "純資産",
@@ -84,7 +87,6 @@ export default function DashboardPage() {
               },
               { label: "総資産", value: totalAssets, color: "text-blue-400", note: "生活資金＋投資資金" },
               { label: "生活資金", value: livingFunds, color: "text-green-400", note: "" },
-              { label: "投資資金", value: investFunds, color: "text-yellow-400", note: "待機資金(現金)＋明細の評価額" },
             ].map(({ label, value, color, note }) => (
               <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <p className="text-xs text-gray-400">{label}</p>
@@ -92,6 +94,20 @@ export default function DashboardPage() {
                   {value !== null ? formatJPY(value) : "--"}
                 </p>
                 {note && <p className="text-xs text-gray-600 mt-1">{note}</p>}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            {[
+              { label: "投資資金（合計）", value: investFunds, color: "text-yellow-400", note: "待機資金＋保有アセット評価額" },
+              { label: "うち 待機資金", value: waitingFunds, color: "text-orange-400", note: "証券口座の現金・MRFなど" },
+            ].map(({ label, value, color, note }) => (
+              <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+                <p className="text-xs text-gray-400">{label}</p>
+                <p className={`text-xl font-bold mt-1 ${color}`}>
+                  {value !== null ? formatJPY(value) : "--"}
+                </p>
+                <p className="text-xs text-gray-600 mt-1">{note}</p>
               </div>
             ))}
           </div>

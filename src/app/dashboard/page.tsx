@@ -11,20 +11,39 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
-  const totalAssets    = latest ? sum(latest.summary_data.total_assets) : null;
-  const livingFunds    = latest ? sum(latest.summary_data.living_funds) : null;
-  const investFunds    = latest ? sum(latest.summary_data.investment_funds) : null;
-  const totalDebt      = latest ? sum(latest.summary_data.debts) : null;
-  const netAssets      = totalAssets !== null && totalDebt !== null ? totalAssets - totalDebt : null;
+  // 投資資金 = 全体資産の待機資金 + 明細の保有アセット評価額合計
+  const investFunds = latest
+    ? sum(latest.summary_data.investment_funds) +
+      latest.assets_data
+        .filter((a) => !a.is_watchlist)
+        .reduce((acc, a) => acc + a.current_value_base, 0)
+    : null;
+
+  const livingFunds = latest ? sum(latest.summary_data.living_funds) : null;
+  const totalDebt   = latest ? sum(latest.summary_data.debts) : null;
+  const totalAssets = (livingFunds !== null && investFunds !== null)
+    ? livingFunds + investFunds
+    : null;
+  const netAssets   = (totalAssets !== null && totalDebt !== null)
+    ? totalAssets - totalDebt
+    : null;
   const equityRatio    = netAssets !== null && totalAssets ? (netAssets / totalAssets) * 100 : null;
   const liquidityRatio = livingFunds !== null && totalDebt ? livingFunds / totalDebt : null;
 
-  const chartData = history.map((s) => ({
-    date: s.snapshot_date,
-    総資産: sum(s.summary_data.total_assets),
-    生活資金: sum(s.summary_data.living_funds),
-    投資資金: sum(s.summary_data.investment_funds),
-  }));
+  const chartData = history.map((s) => {
+    const invest =
+      sum(s.summary_data.investment_funds) +
+      s.assets_data
+        .filter((a) => !a.is_watchlist)
+        .reduce((acc, a) => acc + a.current_value_base, 0);
+    const living = sum(s.summary_data.living_funds);
+    return {
+      date: s.snapshot_date,
+      総資産: living + invest,
+      生活資金: living,
+      投資資金: invest,
+    };
+  });
 
   const equityLabel =
     equityRatio === null ? "" :
@@ -36,7 +55,7 @@ export default function DashboardPage() {
     <>
       {/* UserID */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 mb-8">
-        <p className="text-xs text-gray-500 mb-1">UserID（スプレッドシートの B1 に貼り付けてください）</p>
+        <p className="text-xs text-gray-500 mb-1">UserID（スプレッドシートの B1 にコピペ）</p>
         <p className="font-mono text-xs text-blue-400 break-all">{user.id}</p>
       </div>
 
@@ -57,17 +76,22 @@ export default function DashboardPage() {
           {/* サマリーカード */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[
-              { label: "純資産", value: netAssets, color: netAssets !== null && netAssets < 0 ? "text-red-400" : "text-white", note: netAssets !== null && netAssets < 0 ? "※住宅ローン等の負債を含む" : "" },
-              { label: "総資産", value: totalAssets, color: "text-blue-400", note: "" },
+              {
+                label: "純資産",
+                value: netAssets,
+                color: netAssets !== null && netAssets < 0 ? "text-red-400" : "text-white",
+                note: netAssets !== null && netAssets < 0 ? "※負債を含む" : ""
+              },
+              { label: "総資産", value: totalAssets, color: "text-blue-400", note: "生活資金＋投資資金" },
               { label: "生活資金", value: livingFunds, color: "text-green-400", note: "" },
-              { label: "投資資金", value: investFunds, color: "text-yellow-400", note: "" },
+              { label: "投資資金", value: investFunds, color: "text-yellow-400", note: "待機資金(現金)＋明細の評価額" },
             ].map(({ label, value, color, note }) => (
               <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <p className="text-xs text-gray-400">{label}</p>
                 <p className={`text-xl font-bold mt-1 ${color}`}>
                   {value !== null ? formatJPY(value) : "--"}
                 </p>
-                {note && <p className="text-xs text-gray-500 mt-1">{note}</p>}
+                {note && <p className="text-xs text-gray-600 mt-1">{note}</p>}
               </div>
             ))}
           </div>
@@ -97,8 +121,29 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* 負債内訳 */}
+          {latest.summary_data.debts.length > 0 && (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-8">
+              <h3 className="text-sm font-medium text-gray-400 mb-4">負債内訳</h3>
+              <div className="space-y-3">
+                {latest.summary_data.debts.map((debt, i) => (
+                  <div key={i} className="flex items-center justify-between border-b border-gray-800/50 last:border-0 pb-3 last:pb-0">
+                    <div>
+                      <p className="text-sm font-medium">{debt.name}</p>
+                      {debt.note && (
+                        <p className="text-xs text-gray-500 mt-0.5">{debt.note}</p>
+                      )}
+                      <p className="text-xs text-gray-600">{debt.account}</p>
+                    </div>
+                    <p className="text-sm text-red-400 tabular-nums">{formatJPY(debt.amount)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 時系列グラフ */}
-          {chartData.length > 1 && (
+          {chartData.length > 1 ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
               <h3 className="text-sm font-medium text-gray-400 mb-6">資産推移</h3>
               <ResponsiveContainer width="100%" height={280}>
@@ -121,11 +166,8 @@ export default function DashboardPage() {
                   <Line type="monotone" dataKey="投資資金" stroke="#fbbf24" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
-              <p className="text-xs text-gray-600 mt-2 text-center">※ データが2件以上になると表示されます</p>
             </div>
-          )}
-
-          {chartData.length <= 1 && (
+          ) : (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex items-center justify-center h-40">
               <p className="text-gray-500 text-sm">資産推移グラフはデータが2件以上になると表示されます</p>
             </div>

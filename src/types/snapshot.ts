@@ -7,10 +7,10 @@ export type Debt = {
   name: string;
   account: string;
   amount: number;
+  note: string;
 };
 
 export type SummaryData = {
-  total_assets: AccountAmount[];
   living_funds: AccountAmount[];
   investment_funds: AccountAmount[];
   debts: Debt[];
@@ -21,6 +21,7 @@ export type Asset = {
   ticker: string;
   quantity: number;
   current_price: number;
+  rate: number;
   current_value_base: number;
   current_ratio: number;
   currency: string;

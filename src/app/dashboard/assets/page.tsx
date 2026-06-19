@@ -14,7 +14,7 @@ const COLORS = [
 
 type PieEntry = { name: string; value: number };
 
-// 同一アセット名 + 同一口座を合算
+// 同一アセット名 + 同一口座を合算（テーブル用）
 function mergeAssets(assets: Asset[]): Asset[] {
   const map = new Map<string, Asset>();
   for (const asset of assets) {
@@ -26,6 +26,34 @@ function mergeAssets(assets: Asset[]): Asset[] {
         quantity:           ex.quantity + asset.quantity,
         current_value_base: ex.current_value_base + asset.current_value_base,
         current_ratio:      0, // 後で再計算
+        investment_memo:    [ex.investment_memo, asset.investment_memo].filter(Boolean).join(" / "),
+      });
+    } else {
+      map.set(key, { ...asset });
+    }
+  }
+  const merged = Array.from(map.values());
+  const total  = merged.reduce((s, a) => s + a.current_value_base, 0);
+  return merged.map((a) => ({
+    ...a,
+    current_ratio: total > 0 ? Math.round((a.current_value_base / total) * 1000) / 10 : 0,
+  }));
+}
+
+// 同一アセット名で口座をまたいで合算（比率バー用）
+function mergeAssetsByName(assets: Asset[]): Asset[] {
+  const map = new Map<string, Asset>();
+  for (const asset of assets) {
+    const key = asset.asset_name;
+    if (map.has(key)) {
+      const ex = map.get(key)!;
+      const accounts = [...new Set([ex.account, asset.account].filter(Boolean))];
+      map.set(key, {
+        ...ex,
+        account:            accounts.join(" / "),
+        quantity:           ex.quantity + asset.quantity,
+        current_value_base: ex.current_value_base + asset.current_value_base,
+        current_ratio:      0,
         investment_memo:    [ex.investment_memo, asset.investment_memo].filter(Boolean).join(" / "),
       });
     } else {
@@ -143,6 +171,11 @@ export default function AssetsPage() {
 
   const heldAssets = useMemo(
     () => mergeAssets(allAssets.filter((a) => !a.is_watchlist)),
+    [allAssets]
+  );
+  // 比率バー用：口座をまたいで同一アセット名を合算
+  const heldAssetsByName = useMemo(
+    () => mergeAssetsByName(allAssets.filter((a) => !a.is_watchlist)),
     [allAssets]
   );
   const watchlistAssets = useMemo(
@@ -276,14 +309,14 @@ export default function AssetsPage() {
           <p className="text-xs text-gray-600">投資総額: {formatJPY(totalValue)}</p>
         </div>
         <div className="space-y-5">
-          {heldAssets.map((asset) => {
+          {heldAssetsByName.map((asset) => {
             const target      = getTarget(asset.asset_name);
             const diff        = asset.current_ratio - target;
             const moveAmount  = calcMoveAmount(asset);
             const needsAction = target > 0 && Math.abs(diff) > 5;
 
             return (
-              <div key={`${asset.asset_name}::${asset.account}`}>
+              <div key={asset.asset_name}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{asset.asset_name}</span>

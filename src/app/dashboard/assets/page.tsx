@@ -136,27 +136,21 @@ export default function AssetsPage() {
   const [activeScenario, setActiveScenario] = useState<number>(0);
   const [groupKey, setGroupKey]             = useState<string>("asset");
 
-  if (loading) return <p className="text-gray-500 text-sm">読み込み中...</p>;
-  if (!latest) return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center">
-      <p className="text-gray-400">データがありません</p>
-      <p className="text-gray-500 text-sm mt-2">スプレッドシートで「同期する」を押してください</p>
-    </div>
-  );
-
-  const allAssets: Asset[]   = latest.assets_data;
-  const scenarios: Scenario[] = latest.scenario_data;
+  // フックはすべて早期リターンより前に呼ぶ（Rules of Hooks）
+  const allAssets: Asset[]    = latest?.assets_data ?? [];
+  const scenarios: Scenario[] = latest?.scenario_data ?? [];
   const currentScenario       = scenarios[activeScenario];
 
-  // 合算済みの保有アセット・ウォッチリスト
-  const heldAssets      = useMemo(() => mergeAssets(allAssets.filter((a) => !a.is_watchlist)), [allAssets]);
-  const watchlistAssets = allAssets.filter(
-    (a) => a.is_watchlist && (currentScenario?.targets[a.asset_name] ?? 0) > 0
+  const heldAssets = useMemo(
+    () => mergeAssets(allAssets.filter((a) => !a.is_watchlist)),
+    [allAssets]
   );
-
+  const watchlistAssets = useMemo(
+    () => allAssets.filter((a) => a.is_watchlist && (currentScenario?.targets[a.asset_name] ?? 0) > 0),
+    [allAssets, currentScenario]
+  );
   const totalValue = heldAssets.reduce((sum, a) => sum + a.current_value_base, 0);
 
-  // 自由項目キーの一覧（明細シートのI列以降の列名）
   const attrKeys: string[] = useMemo(() => {
     const keys = new Set<string>();
     for (const a of allAssets) {
@@ -167,7 +161,6 @@ export default function AssetsPage() {
     return Array.from(keys);
   }, [allAssets]);
 
-  // 円グラフ用データ（グルーピング対応）
   const currentPieData: PieEntry[] = useMemo(() => {
     if (groupKey === "asset") {
       return heldAssets.filter((a) => a.current_ratio > 0).map((a) => ({ name: a.asset_name, value: a.current_ratio }));
@@ -184,6 +177,14 @@ export default function AssetsPage() {
     }
     return groupScenarioByAttr(currentScenario, allAssets, groupKey);
   }, [currentScenario, allAssets, groupKey]);
+
+  if (loading) return <p className="text-gray-500 text-sm">読み込み中...</p>;
+  if (!latest) return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center">
+      <p className="text-gray-400">データがありません</p>
+      <p className="text-gray-500 text-sm mt-2">スプレッドシートで「同期する」を押してください</p>
+    </div>
+  );
 
   const getTarget = (assetName: string): number =>
     currentScenario?.targets[assetName] ?? 0;

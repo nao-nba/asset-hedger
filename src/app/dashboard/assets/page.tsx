@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSnapshot, formatJPY } from "@/hooks/useSnapshot";
 import type { Asset, Scenario } from "@/types/snapshot";
 import {
@@ -14,6 +14,67 @@ const COLORS = [
 
 type PieEntry = { name: string; value: number };
 
+// 同一アセット名 + 同一口座を合算
+function mergeAssets(assets: Asset[]): Asset[] {
+  const map = new Map<string, Asset>();
+  for (const asset of assets) {
+    const key = `${asset.asset_name}::${asset.account}`;
+    if (map.has(key)) {
+      const ex = map.get(key)!;
+      map.set(key, {
+        ...ex,
+        quantity:           ex.quantity + asset.quantity,
+        current_value_base: ex.current_value_base + asset.current_value_base,
+        current_ratio:      0, // 後で再計算
+        investment_memo:    [ex.investment_memo, asset.investment_memo].filter(Boolean).join(" / "),
+      });
+    } else {
+      map.set(key, { ...asset });
+    }
+  }
+  const merged = Array.from(map.values());
+  const total  = merged.reduce((s, a) => s + a.current_value_base, 0);
+  return merged.map((a) => ({
+    ...a,
+    current_ratio: total > 0 ? Math.round((a.current_value_base / total) * 1000) / 10 : 0,
+  }));
+}
+
+// 属性キーで現在配分を集計
+function groupByAttr(assets: Asset[], key: string): PieEntry[] {
+  const map = new Map<string, number>();
+  for (const a of assets) {
+    const label = a.flexible_items[key]?.trim() || "未設定";
+    map.set(label, (map.get(label) ?? 0) + a.current_ratio);
+  }
+  return Array.from(map.entries())
+    .map(([name, value]) => ({ name, value: Math.round(value * 10) / 10 }))
+    .filter((e) => e.value > 0);
+}
+
+// 属性キーでシナリオ目標を集計（アセット名→属性値のマッピングを使う）
+function groupScenarioByAttr(
+  scenario: Scenario,
+  allAssets: Asset[],
+  key: string
+): PieEntry[] {
+  const attrOf = new Map<string, string>();
+  for (const a of allAssets) {
+    if (!attrOf.has(a.asset_name)) {
+      attrOf.set(a.asset_name, a.flexible_items[key]?.trim() || "未設定");
+    }
+  }
+  const map = new Map<string, number>();
+  for (const [name, ratio] of Object.entries(scenario.targets)) {
+    if (!ratio) continue;
+    const label = attrOf.get(name) ?? "未設定";
+    map.set(label, (map.get(label) ?? 0) + ratio);
+  }
+  return Array.from(map.entries())
+    .map(([name, value]) => ({ name, value: Math.round(value * 10) / 10 }))
+    .filter((e) => e.value > 0);
+}
+
 function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
   return (
     <div className="flex-1">
@@ -22,10 +83,8 @@ function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
         <PieChart>
           <Pie
             data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={55}
-            outerRadius={85}
+            cx="50%" cy="50%"
+            innerRadius={55} outerRadius={85}
             paddingAngle={2}
             dataKey="value"
           >
@@ -46,13 +105,11 @@ function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
 }
 
 type RatioBarProps = { current: number; target: number };
-
 function RatioBar({ current, target }: RatioBarProps) {
   const diff = current - target;
   const barColor =
     Math.abs(diff) <= 5 ? "bg-blue-500" :
     diff > 0 ? "bg-yellow-500" : "bg-red-500";
-
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
@@ -77,6 +134,7 @@ function RatioBar({ current, target }: RatioBarProps) {
 export default function AssetsPage() {
   const { latest, loading } = useSnapshot();
   const [activeScenario, setActiveScenario] = useState<number>(0);
+  const [groupKey, setGroupKey]             = useState<string>("asset");
 
   if (loading) return <p className="text-gray-500 text-sm">読み込み中...</p>;
   if (!latest) return (
@@ -86,43 +144,52 @@ export default function AssetsPage() {
     </div>
   );
 
-  const allAssets: Asset[]    = latest.assets_data;
-  const heldAssets             = allAssets.filter((a) => !a.is_watchlist);
-  const scenarios: Scenario[]  = latest.scenario_data;
-  const currentScenario        = scenarios[activeScenario];
-  // 検討中アセットは、現在のシナリオで目標比率が設定されているものだけ表示
+  const allAssets: Asset[]   = latest.assets_data;
+  const scenarios: Scenario[] = latest.scenario_data;
+  const currentScenario       = scenarios[activeScenario];
+
+  // 合算済みの保有アセット・ウォッチリスト
+  const heldAssets      = useMemo(() => mergeAssets(allAssets.filter((a) => !a.is_watchlist)), [allAssets]);
   const watchlistAssets = allAssets.filter(
     (a) => a.is_watchlist && (currentScenario?.targets[a.asset_name] ?? 0) > 0
   );
 
-  // 総投資評価額（保有中のみ）
   const totalValue = heldAssets.reduce((sum, a) => sum + a.current_value_base, 0);
 
-  // シナリオの購入候補（ウォッチリストにある or 保有中だが目標が設定されている）
-  const heldAssetNames = new Set(heldAssets.map((a) => a.asset_name));
-  const scenarioAssetNames = currentScenario
-    ? Object.keys(currentScenario.targets).filter((n) => (currentScenario.targets[n] ?? 0) > 0)
-    : [];
+  // 自由項目キーの一覧（明細シートのI列以降の列名）
+  const attrKeys: string[] = useMemo(() => {
+    const keys = new Set<string>();
+    for (const a of allAssets) {
+      for (const k of Object.keys(a.flexible_items)) {
+        if (k) keys.add(k);
+      }
+    }
+    return Array.from(keys);
+  }, [allAssets]);
 
-  // 円グラフ用データ
-  const currentPieData: PieEntry[] = heldAssets
-    .filter((a) => a.current_ratio > 0)
-    .map((a) => ({ name: a.asset_name, value: a.current_ratio }));
+  // 円グラフ用データ（グルーピング対応）
+  const currentPieData: PieEntry[] = useMemo(() => {
+    if (groupKey === "asset") {
+      return heldAssets.filter((a) => a.current_ratio > 0).map((a) => ({ name: a.asset_name, value: a.current_ratio }));
+    }
+    return groupByAttr(heldAssets, groupKey);
+  }, [heldAssets, groupKey]);
 
-  const scenarioPieData: PieEntry[] = currentScenario
-    ? scenarioAssetNames.map((name) => ({
-        name,
-        value: currentScenario.targets[name] ?? 0,
-      }))
-    : [];
+  const scenarioPieData: PieEntry[] = useMemo(() => {
+    if (!currentScenario) return [];
+    if (groupKey === "asset") {
+      return Object.entries(currentScenario.targets)
+        .filter(([, v]) => v > 0)
+        .map(([name, value]) => ({ name, value }));
+    }
+    return groupScenarioByAttr(currentScenario, allAssets, groupKey);
+  }, [currentScenario, allAssets, groupKey]);
 
   const getTarget = (assetName: string): number =>
     currentScenario?.targets[assetName] ?? 0;
 
-  // 移動が必要な金額を計算
   const calcMoveAmount = (asset: Asset): number => {
-    const target = getTarget(asset.asset_name);
-    const diff   = target - asset.current_ratio; // プラス=買い増し必要
+    const diff = getTarget(asset.asset_name) - asset.current_ratio;
     return (diff / 100) * totalValue;
   };
 
@@ -174,7 +241,26 @@ export default function AssetsPage() {
       {/* 円グラフ */}
       {currentScenario && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
-          <h3 className="text-sm font-medium text-gray-400 mb-4">配分比較</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-400">配分比較</h3>
+            {/* グルーピング切り替え */}
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <span className="text-xs text-gray-600">グループ:</span>
+              {["asset", ...attrKeys].map((key) => (
+                <button
+                  key={key}
+                  onClick={() => setGroupKey(key)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    groupKey === key
+                      ? "bg-gray-700 text-white"
+                      : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  {key === "asset" ? "アセット別" : key}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-4">
             <AssetPieChart data={currentPieData} title="現在の配分" />
             <AssetPieChart data={scenarioPieData} title={`目標: ${currentScenario.name}`} />
@@ -190,13 +276,13 @@ export default function AssetsPage() {
         </div>
         <div className="space-y-5">
           {heldAssets.map((asset) => {
-            const target     = getTarget(asset.asset_name);
-            const diff       = asset.current_ratio - target;
-            const moveAmount = calcMoveAmount(asset);
+            const target      = getTarget(asset.asset_name);
+            const diff        = asset.current_ratio - target;
+            const moveAmount  = calcMoveAmount(asset);
             const needsAction = target > 0 && Math.abs(diff) > 5;
 
             return (
-              <div key={asset.asset_name}>
+              <div key={`${asset.asset_name}::${asset.account}`}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{asset.asset_name}</span>
@@ -214,7 +300,9 @@ export default function AssetsPage() {
                           ? "bg-yellow-400/10 text-yellow-400"
                           : "bg-red-400/10 text-red-400"
                       }`}>
-                        {diff > 0 ? `▼ ${formatJPY(Math.abs(moveAmount))} 売却検討` : `▲ ${formatJPY(Math.abs(moveAmount))} 追加検討`}
+                        {diff > 0
+                          ? `▼ ${formatJPY(Math.abs(moveAmount))} 売却検討`
+                          : `▲ ${formatJPY(Math.abs(moveAmount))} 追加検討`}
                       </span>
                     )}
                   </div>
@@ -238,9 +326,8 @@ export default function AssetsPage() {
           </h3>
           <div className="space-y-4">
             {watchlistAssets.map((asset) => {
-              const target      = getTarget(asset.asset_name);
-              const buyAmount   = target > 0 ? (target / 100) * totalValue : null;
-
+              const target    = getTarget(asset.asset_name);
+              const buyAmount = target > 0 ? (target / 100) * totalValue : null;
               return (
                 <div key={asset.asset_name} className="border-b border-gray-800/50 last:border-0 pb-4 last:pb-0">
                   <div className="flex items-center justify-between mb-1">
@@ -249,9 +336,7 @@ export default function AssetsPage() {
                       {asset.ticker && (
                         <span className="text-xs text-gray-500 font-mono">{asset.ticker}</span>
                       )}
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/10 text-blue-400">
-                        未保有
-                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/10 text-blue-400">未保有</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {target > 0 && (

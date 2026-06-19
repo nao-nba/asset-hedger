@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useSnapshot, formatJPY } from "@/hooks/useSnapshot";
+import { useI18n } from "@/lib/i18n";
 import type { Asset, Scenario } from "@/types/snapshot";
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
@@ -161,6 +162,7 @@ function RatioBar({ current, target }: RatioBarProps) {
 
 export default function AssetsPage() {
   const { latest, loading } = useSnapshot();
+  const { t } = useI18n();
   const [activeScenario, setActiveScenario] = useState<number>(0);
   const [groupKey, setGroupKey]             = useState<string>("asset");
 
@@ -211,11 +213,11 @@ export default function AssetsPage() {
     return groupScenarioByAttr(currentScenario, allAssets, groupKey);
   }, [currentScenario, allAssets, groupKey]);
 
-  if (loading) return <p className="text-gray-500 text-sm">読み込み中...</p>;
+  if (loading) return <p className="text-gray-500 text-sm">{t.loading}</p>;
   if (!latest) return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center">
-      <p className="text-gray-400">データがありません</p>
-      <p className="text-gray-500 text-sm mt-2">スプレッドシートで「同期する」を押してください</p>
+      <p className="text-gray-400">{t.noData}</p>
+      <p className="text-gray-500 text-sm mt-2">{t.noDataHint}</p>
     </div>
   );
 
@@ -230,14 +232,14 @@ export default function AssetsPage() {
   return (
     <>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">アセット明細</h2>
-        <p className="text-sm text-gray-500">最終更新: {latest.snapshot_date}</p>
+        <h2 className="text-2xl font-bold">{t.assetPageTitle}</h2>
+        <p className="text-sm text-gray-500">{t.lastUpdated}: {latest.snapshot_date}</p>
       </div>
 
       {/* シナリオ切り替え */}
       {scenarios.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-6">
-          <p className="text-xs text-gray-500 mb-3">シナリオを選択して目標比率を切り替える</p>
+          <p className="text-xs text-gray-500 mb-3">{t.scenarioHint}</p>
           <div className="flex flex-wrap gap-2">
             {scenarios.map((s, i) => (
               <button
@@ -257,13 +259,13 @@ export default function AssetsPage() {
             <div className="mt-4 pt-4 border-t border-gray-800 flex flex-wrap gap-6 text-sm">
               {currentScenario.description && (
                 <div>
-                  <span className="text-gray-500 text-xs block mb-0.5">前提条件</span>
+                  <span className="text-gray-500 text-xs block mb-0.5">{t.condition}</span>
                   <p className="text-gray-300">{currentScenario.description}</p>
                 </div>
               )}
               {currentScenario.trigger && (
                 <div>
-                  <span className="text-gray-500 text-xs block mb-0.5">トリガー</span>
+                  <span className="text-gray-500 text-xs block mb-0.5">{t.trigger}</span>
                   <p className="text-yellow-400 font-mono">{currentScenario.trigger}</p>
                 </div>
               )}
@@ -276,10 +278,9 @@ export default function AssetsPage() {
       {currentScenario && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-400">配分比較</h3>
-            {/* グルーピング切り替え */}
+            <h3 className="text-sm font-medium text-gray-400">{t.allocComparison}</h3>
             <div className="flex items-center gap-2 flex-wrap justify-end">
-              <span className="text-xs text-gray-600">グループ:</span>
+              <span className="text-xs text-gray-600">{t.groupBy}</span>
               {["asset", ...attrKeys].map((key) => (
                 <button
                   key={key}
@@ -290,14 +291,14 @@ export default function AssetsPage() {
                       : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
                   }`}
                 >
-                  {key === "asset" ? "アセット別" : key}
+                  {key === "asset" ? t.byAsset : key}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex gap-4">
-            <AssetPieChart data={currentPieData} title="現在の配分" />
-            <AssetPieChart data={scenarioPieData} title={`目標: ${currentScenario.name}`} />
+            <AssetPieChart data={currentPieData} title={t.currentAlloc} />
+            <AssetPieChart data={scenarioPieData} title={t.targetAlloc(currentScenario.name)} />
           </div>
         </div>
       )}
@@ -305,8 +306,8 @@ export default function AssetsPage() {
       {/* 比率バー + 移動金額 */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-sm font-medium text-gray-400">現在比率 vs 目標比率</h3>
-          <p className="text-xs text-gray-600">投資総額: {formatJPY(totalValue)}</p>
+          <h3 className="text-sm font-medium text-gray-400">{t.ratioVsTarget}</h3>
+          <p className="text-xs text-gray-600">{t.totalInvested}: {formatJPY(totalValue)}</p>
         </div>
         <div className="space-y-5">
           {heldAssetsByName.map((asset) => {
@@ -327,7 +328,7 @@ export default function AssetsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">{formatJPY(asset.current_value_base)}</span>
-                    <span className="text-xs text-gray-500">目標 {target}%</span>
+                    <span className="text-xs text-gray-500">{t.targetLabel(target)}</span>
                     {needsAction && (
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         diff > 0
@@ -335,8 +336,8 @@ export default function AssetsPage() {
                           : "bg-red-400/10 text-red-400"
                       }`}>
                         {diff > 0
-                          ? `▼ ${formatJPY(Math.abs(moveAmount))} 売却検討`
-                          : `▲ ${formatJPY(Math.abs(moveAmount))} 追加検討`}
+                          ? t.sellNote(formatJPY(Math.abs(moveAmount)))
+                          : t.buyNote(formatJPY(Math.abs(moveAmount)))}
                       </span>
                     )}
                   </div>
@@ -355,8 +356,8 @@ export default function AssetsPage() {
       {watchlistAssets.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
           <h3 className="text-sm font-medium text-gray-400 mb-4">
-            検討中アセット
-            <span className="text-xs text-gray-600 ml-2">現在未保有・将来の購入候補</span>
+            {t.watchlist}
+            <span className="text-xs text-gray-600 ml-2">{t.watchlistNote}</span>
           </h3>
           <div className="space-y-4">
             {watchlistAssets.map((asset) => {
@@ -370,15 +371,15 @@ export default function AssetsPage() {
                       {asset.ticker && (
                         <span className="text-xs text-gray-500 font-mono">{asset.ticker}</span>
                       )}
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/10 text-blue-400">未保有</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/10 text-blue-400">{t.notHeld}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {target > 0 && (
-                        <span className="text-xs text-gray-500">このシナリオの目標: {target}%</span>
+                        <span className="text-xs text-gray-500">{t.scenarioTarget(target)}</span>
                       )}
                       {buyAmount !== null && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-green-400/10 text-green-400">
-                          ▲ {formatJPY(buyAmount)} 購入検討
+                          {t.buyConsider(formatJPY(buyAmount))}
                         </span>
                       )}
                     </div>
@@ -395,17 +396,17 @@ export default function AssetsPage() {
 
       {/* 保有明細テーブル */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-        <h3 className="text-sm font-medium text-gray-400 mb-4">保有明細</h3>
+        <h3 className="text-sm font-medium text-gray-400 mb-4">{t.holdingsTable}</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-500 border-b border-gray-800">
-                <th className="text-left pb-3 pr-4">資産名</th>
-                <th className="text-left pb-3 pr-4">口座</th>
-                <th className="text-right pb-3 pr-4">数量</th>
-                <th className="text-right pb-3 pr-4">現在価格</th>
-                <th className="text-right pb-3 pr-4">通貨</th>
-                <th className="text-right pb-3">評価額</th>
+                <th className="text-left pb-3 pr-4">{t.colAsset}</th>
+                <th className="text-left pb-3 pr-4">{t.colAccount}</th>
+                <th className="text-right pb-3 pr-4">{t.colQty}</th>
+                <th className="text-right pb-3 pr-4">{t.colPrice}</th>
+                <th className="text-right pb-3 pr-4">{t.colCurrency}</th>
+                <th className="text-right pb-3">{t.colValue}</th>
               </tr>
             </thead>
             <tbody>

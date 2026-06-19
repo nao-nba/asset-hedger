@@ -1,6 +1,7 @@
 "use client";
 
 import { useSnapshot, sum, formatJPY } from "@/hooks/useSnapshot";
+import { useI18n } from "@/lib/i18n";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
@@ -8,10 +9,10 @@ import {
 
 export default function DashboardPage() {
   const { user, latest, history, loading } = useSnapshot();
+  const { t } = useI18n();
 
   if (!user) return null;
 
-  // 投資資金 = 全体資産の待機資金 + 明細の保有アセット評価額合計
   const waitingFunds = latest ? sum(latest.summary_data.investment_funds ?? []) : null;
   const assetsFunds  = latest
     ? latest.assets_data
@@ -27,7 +28,7 @@ export default function DashboardPage() {
   const totalAssets = (livingFunds !== null && investFunds !== null)
     ? livingFunds + investFunds
     : null;
-  const netAssets   = (totalAssets !== null && totalDebt !== null)
+  const netAssets = (totalAssets !== null && totalDebt !== null)
     ? totalAssets - totalDebt
     : null;
   const equityRatio    = netAssets !== null && totalAssets ? (netAssets / totalAssets) * 100 : null;
@@ -42,51 +43,50 @@ export default function DashboardPage() {
     const living = sum(s.summary_data.living_funds);
     return {
       date: s.snapshot_date,
-      総資産: living + invest,
-      生活資金: living,
-      投資資金: invest,
+      [t.totalAssets]:    living + invest,
+      [t.livingFunds]:    living,
+      [t.investmentFunds]: invest,
     };
   });
 
   const equityLabel =
     equityRatio === null ? "" :
-    equityRatio >= 50 ? "✓ 健全: 家計が安定しています" :
-    equityRatio >= 20 ? "△ 注意: ローン負担がやや大きめです" :
-    "⚠ 要注意: ローン負担が大きい状態です";
+    equityRatio >= 50 ? t.equityGood :
+    equityRatio >= 20 ? t.equityWarn :
+    t.equityBad;
 
   return (
     <>
-      {/* UserID */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 mb-8">
-        <p className="text-xs text-gray-500 mb-1">UserID（スプレッドシートの B1 にコピペ）</p>
+        <p className="text-xs text-gray-500 mb-1">{t.userIdLabel}</p>
         <p className="font-mono text-xs text-blue-400 break-all">{user.id}</p>
       </div>
 
       {loading ? (
-        <p className="text-gray-500 text-sm">読み込み中...</p>
+        <p className="text-gray-500 text-sm">{t.loading}</p>
       ) : !latest ? (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center">
-          <p className="text-gray-400">データがありません</p>
-          <p className="text-gray-500 text-sm mt-2">スプレッドシートで「同期する」を押してください</p>
+          <p className="text-gray-400">{t.noData}</p>
+          <p className="text-gray-500 text-sm mt-2">{t.noDataHint}</p>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">資産の部</h2>
-            <p className="text-sm text-gray-500">最終更新: {latest.snapshot_date}</p>
+            <h2 className="text-2xl font-bold">{t.pageTitle}</h2>
+            <p className="text-sm text-gray-500">{t.lastUpdated}: {latest.snapshot_date}</p>
           </div>
 
-          {/* サマリーカード */}
+          {/* サマリーカード上段 */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
             {[
               {
-                label: "純資産",
+                label: t.netAssets,
                 value: netAssets,
                 color: netAssets !== null && netAssets < 0 ? "text-red-400" : "text-white",
-                note: netAssets !== null && netAssets < 0 ? "※負債を含む" : ""
+                note:  netAssets !== null && netAssets < 0 ? t.debtNote : "",
               },
-              { label: "総資産", value: totalAssets, color: "text-blue-400", note: "生活資金＋投資資金" },
-              { label: "生活資金", value: livingFunds, color: "text-green-400", note: "" },
+              { label: t.totalAssets,   value: totalAssets, color: "text-blue-400",  note: t.totalAssetsNote },
+              { label: t.livingFunds,   value: livingFunds, color: "text-green-400", note: "" },
             ].map(({ label, value, color, note }) => (
               <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <p className="text-xs text-gray-400">{label}</p>
@@ -97,10 +97,12 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+
+          {/* サマリーカード下段 */}
           <div className="grid grid-cols-2 gap-4 mb-8">
             {[
-              { label: "投資資金（合計）", value: investFunds, color: "text-yellow-400", note: "待機資金＋保有アセット評価額" },
-              { label: "うち 待機資金", value: waitingFunds, color: "text-orange-400", note: "証券口座の現金・MRFなど" },
+              { label: t.investmentFunds, value: investFunds,   color: "text-yellow-400", note: t.investmentNote },
+              { label: t.waitingFunds,    value: waitingFunds,  color: "text-orange-400", note: t.waitingNote },
             ].map(({ label, value, color, note }) => (
               <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <p className="text-xs text-gray-400">{label}</p>
@@ -114,24 +116,24 @@ export default function DashboardPage() {
 
           {/* 財務健全性 */}
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-8">
-            <h3 className="text-sm font-medium text-gray-400 mb-4">財務健全性</h3>
+            <h3 className="text-sm font-medium text-gray-400 mb-4">{t.financialHealth}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <p className="text-xs text-gray-500 mb-1">自己資本比率</p>
+                <p className="text-xs text-gray-500 mb-1">{t.equityRatio}</p>
                 <p className="text-3xl font-bold">
                   {equityRatio !== null ? `${equityRatio.toFixed(1)}%` : "--"}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">{equityLabel}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">流動性比率（防衛余力）</p>
+                <p className="text-xs text-gray-500 mb-1">{t.liquidityRatio}</p>
                 <p className="text-3xl font-bold">
                   {liquidityRatio !== null ? liquidityRatio.toFixed(2) : "--"}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
                   {liquidityRatio !== null && totalDebt
-                    ? `負債の ${(liquidityRatio * 100).toFixed(0)}% を即座に現金でカバーできます`
-                    : totalDebt === 0 ? "負債なし" : ""}
+                    ? t.liquidityText((liquidityRatio * 100).toFixed(0) as unknown as number)
+                    : totalDebt === 0 ? t.noDebt : ""}
                 </p>
               </div>
             </div>
@@ -140,15 +142,13 @@ export default function DashboardPage() {
           {/* 負債内訳 */}
           {latest.summary_data.debts.length > 0 && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-8">
-              <h3 className="text-sm font-medium text-gray-400 mb-4">負債内訳</h3>
+              <h3 className="text-sm font-medium text-gray-400 mb-4">{t.debtBreakdown}</h3>
               <div className="space-y-3">
                 {latest.summary_data.debts.map((debt, i) => (
                   <div key={i} className="flex items-center justify-between border-b border-gray-800/50 last:border-0 pb-3 last:pb-0">
                     <div>
                       <p className="text-sm font-medium">{debt.name}</p>
-                      {debt.note && (
-                        <p className="text-xs text-gray-500 mt-0.5">{debt.note}</p>
-                      )}
+                      {debt.note && <p className="text-xs text-gray-500 mt-0.5">{debt.note}</p>}
                       <p className="text-xs text-gray-600">{debt.account}</p>
                     </div>
                     <p className="text-sm text-red-400 tabular-nums">{formatJPY(debt.amount)}</p>
@@ -161,7 +161,7 @@ export default function DashboardPage() {
           {/* 時系列グラフ */}
           {chartData.length > 1 ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-              <h3 className="text-sm font-medium text-gray-400 mb-6">資産推移</h3>
+              <h3 className="text-sm font-medium text-gray-400 mb-6">{t.assetTrend}</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
@@ -177,15 +177,15 @@ export default function DashboardPage() {
                     labelStyle={{ color: "#9ca3af" }}
                   />
                   <Legend wrapperStyle={{ color: "#9ca3af", fontSize: 12 }} />
-                  <Line type="monotone" dataKey="総資産" stroke="#60a5fa" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="生活資金" stroke="#34d399" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="投資資金" stroke="#fbbf24" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={t.totalAssets}    stroke="#60a5fa" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={t.livingFunds}    stroke="#34d399" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={t.investmentFunds} stroke="#fbbf24" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           ) : (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex items-center justify-center h-40">
-              <p className="text-gray-500 text-sm">資産推移グラフはデータが2件以上になると表示されます</p>
+              <p className="text-gray-500 text-sm">{t.trendHint}</p>
             </div>
           )}
         </>

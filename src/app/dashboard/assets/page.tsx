@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useSnapshot, formatJPY } from "@/hooks/useSnapshot";
+import { useSnapshot, formatAmount } from "@/hooks/useSnapshot";
 import { useI18n } from "@/lib/i18n";
 import type { Asset, Scenario } from "@/types/snapshot";
 import {
@@ -163,6 +163,8 @@ function RatioBar({ current, target }: RatioBarProps) {
 export default function AssetsPage() {
   const { latest, loading } = useSnapshot();
   const { t } = useI18n();
+  const ccy = latest?.base_currency ?? "JPY";
+  const fmt = (n: number) => formatAmount(n, ccy);
   const [activeScenario, setActiveScenario] = useState<number>(0);
   const [groupKey, setGroupKey]             = useState<string>("asset");
 
@@ -307,7 +309,7 @@ export default function AssetsPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-sm font-medium text-gray-400">{t.ratioVsTarget}</h3>
-          <p className="text-xs text-gray-600">{t.totalInvested}: {formatJPY(totalValue)}</p>
+          <p className="text-xs text-gray-600">{t.totalInvested}: {fmt(totalValue)}</p>
         </div>
         <div className="space-y-5">
           {heldAssetsByName.map((asset) => {
@@ -327,7 +329,7 @@ export default function AssetsPage() {
                     <span className="text-xs text-gray-600">{asset.account}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">{formatJPY(asset.current_value_base)}</span>
+                    <span className="text-xs text-gray-500">{fmt(asset.current_value_base)}</span>
                     <span className="text-xs text-gray-500">{t.targetLabel(target)}</span>
                     {needsAction && (
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -336,8 +338,8 @@ export default function AssetsPage() {
                           : "bg-red-400/10 text-red-400"
                       }`}>
                         {diff > 0
-                          ? t.sellNote(formatJPY(Math.abs(moveAmount)))
-                          : t.buyNote(formatJPY(Math.abs(moveAmount)))}
+                          ? t.sellNote(fmt(Math.abs(moveAmount)))
+                          : t.buyNote(fmt(Math.abs(moveAmount)))}
                       </span>
                     )}
                   </div>
@@ -379,7 +381,7 @@ export default function AssetsPage() {
                       )}
                       {buyAmount !== null && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-green-400/10 text-green-400">
-                          {t.buyConsider(formatJPY(buyAmount))}
+                          {t.buyConsider(fmt(buyAmount))}
                         </span>
                       )}
                     </div>
@@ -417,7 +419,7 @@ export default function AssetsPage() {
                   <td className="py-3 pr-4 text-right tabular-nums">{asset.quantity.toLocaleString()}</td>
                   <td className="py-3 pr-4 text-right tabular-nums">{asset.current_price.toLocaleString()}</td>
                   <td className="py-3 pr-4 text-right text-gray-400">{asset.currency}</td>
-                  <td className="py-3 text-right tabular-nums text-blue-400">{formatJPY(asset.current_value_base)}</td>
+                  <td className="py-3 text-right tabular-nums text-blue-400">{fmt(asset.current_value_base)}</td>
                 </tr>
               ))}
             </tbody>

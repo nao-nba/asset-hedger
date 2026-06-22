@@ -1,6 +1,6 @@
 "use client";
 
-import { useSnapshot, sum, formatJPY } from "@/hooks/useSnapshot";
+import { useSnapshot, sum, formatAmount } from "@/hooks/useSnapshot";
 import { useI18n } from "@/lib/i18n";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
@@ -10,6 +10,8 @@ import {
 export default function DashboardPage() {
   const { user, latest, history, loading } = useSnapshot();
   const { t } = useI18n();
+  const ccy = latest?.base_currency ?? "JPY";
+  const fmt = (n: number) => formatAmount(n, ccy);
 
   if (!user) return null;
 
@@ -91,7 +93,7 @@ export default function DashboardPage() {
               <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <p className="text-xs text-gray-400">{label}</p>
                 <p className={`text-xl font-bold mt-1 ${color}`}>
-                  {value !== null ? formatJPY(value) : "--"}
+                  {value !== null ? fmt(value) : "--"}
                 </p>
                 {note && <p className="text-xs text-gray-600 mt-1">{note}</p>}
               </div>
@@ -107,7 +109,7 @@ export default function DashboardPage() {
               <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <p className="text-xs text-gray-400">{label}</p>
                 <p className={`text-xl font-bold mt-1 ${color}`}>
-                  {value !== null ? formatJPY(value) : "--"}
+                  {value !== null ? fmt(value) : "--"}
                 </p>
                 <p className="text-xs text-gray-600 mt-1">{note}</p>
               </div>
@@ -151,7 +153,7 @@ export default function DashboardPage() {
                       {debt.note && <p className="text-xs text-gray-500 mt-0.5">{debt.note}</p>}
                       <p className="text-xs text-gray-600">{debt.account}</p>
                     </div>
-                    <p className="text-sm text-red-400 tabular-nums">{formatJPY(debt.amount)}</p>
+                    <p className="text-sm text-red-400 tabular-nums">{fmt(debt.amount)}</p>
                   </div>
                 ))}
               </div>
@@ -172,7 +174,7 @@ export default function DashboardPage() {
                     width={60}
                   />
                   <Tooltip
-                    formatter={(value) => typeof value === "number" ? formatJPY(value) : value}
+                    formatter={(value) => typeof value === "number" ? fmt(value) : value}
                     contentStyle={{ backgroundColor: "#111827", border: "1px solid #374151", borderRadius: "8px" }}
                     labelStyle={{ color: "#9ca3af" }}
                   />

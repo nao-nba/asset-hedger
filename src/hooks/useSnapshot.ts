@@ -45,9 +45,21 @@ export function sum(arr: { amount: number }[]) {
 }
 
 export function formatJPY(n: number) {
-  const abs = Math.abs(n);
+  return formatAmount(n, "JPY");
+}
+
+export function formatAmount(n: number, currency: string) {
+  const abs  = Math.abs(n);
   const sign = n < 0 ? "-" : "";
+
+  if (currency === "USD") {
+    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+    if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+    return `${sign}$${abs.toFixed(2)}`;
+  }
+
+  // JPY（デフォルト）
   if (abs >= 100_000_000) return `${sign}${(abs / 100_000_000).toFixed(1)}億円`;
-  if (abs >= 10_000) return `${sign}${Math.round(abs / 10_000)}万円`;
+  if (abs >= 10_000)      return `${sign}${Math.round(abs / 10_000)}万円`;
   return `${sign}${abs.toLocaleString()}円`;
 }

@@ -76,7 +76,9 @@ function mergeAssetsByName(assets: Asset[]): Asset[] {
   }));
 }
 
-// 保有アセットを基準に属性グループ別の現在比率・目標比率を集計
+// 属性グループ別の現在比率・目標比率を集計
+// ★ シナリオのキーは属性値そのもの（例: "Global", "US"）
+//    = シナリオシートの列ヘッダーが属性値の設計
 function calcGroupRatios(
   heldByName: Asset[],
   scenario: Scenario | undefined,
@@ -84,7 +86,7 @@ function calcGroupRatios(
 ): GroupRatio[] {
   const groups = new Map<string, GroupRatio>();
 
-  // 現在比率を集計
+  // 現在比率: 保有アセットを属性値でグループ化
   for (const a of heldByName) {
     const label = a.flexible_items[key]?.trim() || "—";
     const g     = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
@@ -96,21 +98,12 @@ function calcGroupRatios(
     });
   }
 
-  // 目標比率を集計
-  // シナリオのキーは asset_name でも ticker でもありうるので両方で照合する
+  // 目標比率: scenario.targets のキー = 属性値 なのでそのまま使う
   if (scenario) {
-    const keyToLabel = new Map<string, string>();
-    for (const a of heldByName) {
-      const label = a.flexible_items[key]?.trim() || "—";
-      keyToLabel.set(a.asset_name, label);
-      if (a.ticker) keyToLabel.set(a.ticker, label);
-    }
-
-    for (const [name, ratio] of Object.entries(scenario.targets)) {
+    for (const [label, ratio] of Object.entries(scenario.targets)) {
       if (!ratio) continue;
-      const label = keyToLabel.get(name) ?? "—";
-      const g     = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
-      groups.set(label, { ...g, targetRatio: g.targetRatio + ratio });
+      const g = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
+      groups.set(label, { ...g, targetRatio: g.targetRatio + (ratio as number) });
     }
   }
 
@@ -237,17 +230,13 @@ export default function AssetsPage() {
     return groups.filter((g) => g.currentRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.currentRatio * 10) / 10 }));
   }, [heldAssetsByName, effectiveKey]);
 
+  // 目標パイ: scenario.targets のキーが属性値なのでそのまま使う（左右共通）
   const scenarioPieData: PieEntry[] = useMemo(() => {
     if (!currentScenario) return [];
-    if (effectiveKey === "asset") {
-      // 全シナリオ目標（保有中・ウォッチリスト問わず）をアセット名で表示
-      return Object.entries(currentScenario.targets)
-        .filter(([, v]) => v > 0)
-        .map(([name, value]) => ({ name, value }));
-    }
-    const groups = calcGroupRatios(heldAssetsByName, currentScenario, effectiveKey);
-    return groups.filter((g) => g.targetRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.targetRatio * 10) / 10 }));
-  }, [currentScenario, heldAssetsByName, effectiveKey]);
+    return Object.entries(currentScenario.targets)
+      .filter(([, v]) => v > 0)
+      .map(([name, value]) => ({ name, value: value as number }));
+  }, [currentScenario]);
 
   const groupRatios: GroupRatio[] = useMemo(() => {
     if (effectiveKey === "asset") return [];

@@ -130,22 +130,45 @@ function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
 }
 
 function RatioBar({ current, target }: { current: number; target: number }) {
-  const diff     = current - target;
-  const barColor = Math.abs(diff) <= 5 ? "bg-blue-500" : diff > 0 ? "bg-yellow-500" : "bg-red-500";
+  const diff      = current - target;
+  const absDiff   = Math.abs(diff);
+  const isGood    = absDiff <= 5;
+  const barColor  = isGood ? "bg-blue-500" : diff > 0 ? "bg-yellow-500" : "bg-red-500";
+  const diffColor = isGood ? "text-gray-500" : diff > 0 ? "text-yellow-400" : "text-red-400";
+
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
-        <div
-          className={`h-2 rounded-full transition-all ${barColor}`}
-          style={{ width: `${Math.min(Math.max(current, 0), 100)}%` }}
-        />
+    <div className="space-y-1">
+      {/* バー */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 bg-gray-800 rounded-full h-1.5 overflow-hidden relative">
+          {/* 目標マーカー */}
+          {target > 0 && (
+            <div
+              className="absolute top-0 h-full w-0.5 bg-gray-400 opacity-60"
+              style={{ left: `${Math.min(target, 100)}%` }}
+            />
+          )}
+          {/* 現在バー */}
+          <div
+            className={`h-full rounded-full transition-all ${barColor}`}
+            style={{ width: `${Math.min(Math.max(current, 0), 100)}%` }}
+          />
+        </div>
       </div>
-      <span className="text-xs tabular-nums w-12 text-right text-gray-300">{current.toFixed(1)}%</span>
-      <span className={`text-xs tabular-nums w-16 text-right font-medium ${
-        Math.abs(diff) <= 5 ? "text-gray-500" : diff > 0 ? "text-yellow-400" : "text-red-400"
-      }`}>
-        {diff > 0 ? "+" : ""}{diff.toFixed(1)}%
-      </span>
+      {/* 数値行 */}
+      <div className="flex items-center justify-between text-xs tabular-nums">
+        <span className="text-gray-400">
+          現在 <span className="text-white font-medium">{current.toFixed(1)}%</span>
+          {target > 0 && (
+            <> → 目標 <span className="text-gray-300">{target.toFixed(1)}%</span></>
+          )}
+        </span>
+        {target > 0 && (
+          <span className={`font-medium ${diffColor}`}>
+            {diff > 0 ? "+" : ""}{diff.toFixed(1)}%
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -200,9 +223,10 @@ export default function AssetsPage() {
   const scenarioPieData: PieEntry[] = useMemo(() => {
     if (!currentScenario) return [];
     if (effectiveKey === "asset") {
-      return heldAssetsByName
-        .filter((a) => (currentScenario.targets[a.asset_name] ?? 0) > 0)
-        .map((a) => ({ name: a.asset_name, value: currentScenario.targets[a.asset_name] }));
+      // 全シナリオ目標（保有中・ウォッチリスト問わず）をアセット名で表示
+      return Object.entries(currentScenario.targets)
+        .filter(([, v]) => v > 0)
+        .map(([name, value]) => ({ name, value }));
     }
     const groups = calcGroupRatios(heldAssetsByName, currentScenario, effectiveKey);
     return groups.filter((g) => g.targetRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.targetRatio * 10) / 10 }));

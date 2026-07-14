@@ -150,6 +150,8 @@ function AssetPieChart({
             innerRadius={55} outerRadius={85}
             paddingAngle={2}
             dataKey="value"
+            startAngle={90}
+            endAngle={-270}
           >
             {data.map((entry) => (
               <Cell key={entry.name} fill={colorMap.get(entry.name) ?? "#94a3b8"} />

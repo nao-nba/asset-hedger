@@ -15,6 +15,13 @@ const COLORS = [
 
 type PieEntry = { name: string; value: number };
 
+type GroupRatio = {
+  name: string;
+  currentRatio: number;
+  targetRatio: number;
+  currentValue: number;
+};
+
 // 同一アセット名 + 同一口座を合算（テーブル用）
 function mergeAssets(assets: Asset[]): Asset[] {
   const map = new Map<string, Asset>();
@@ -26,7 +33,7 @@ function mergeAssets(assets: Asset[]): Asset[] {
         ...ex,
         quantity:           ex.quantity + asset.quantity,
         current_value_base: ex.current_value_base + asset.current_value_base,
-        current_ratio:      0, // 後で再計算
+        current_ratio:      0,
         investment_memo:    [ex.investment_memo, asset.investment_memo].filter(Boolean).join(" / "),
       });
     } else {
@@ -69,39 +76,41 @@ function mergeAssetsByName(assets: Asset[]): Asset[] {
   }));
 }
 
-// 属性キーで現在配分を集計
-function groupByAttr(assets: Asset[], key: string): PieEntry[] {
-  const map = new Map<string, number>();
-  for (const a of assets) {
-    const label = a.flexible_items[key]?.trim() || "未設定";
-    map.set(label, (map.get(label) ?? 0) + a.current_ratio);
-  }
-  return Array.from(map.entries())
-    .map(([name, value]) => ({ name, value: Math.round(value * 10) / 10 }))
-    .filter((e) => e.value > 0);
-}
-
-// 属性キーでシナリオ目標を集計（アセット名→属性値のマッピングを使う）
-function groupScenarioByAttr(
-  scenario: Scenario,
+// 属性キーでグループ別の現在比率・目標比率を集計
+function calcGroupRatios(
+  heldAssets: Asset[],
   allAssets: Asset[],
+  scenario: Scenario | undefined,
   key: string
-): PieEntry[] {
-  const attrOf = new Map<string, string>();
-  for (const a of allAssets) {
-    if (!attrOf.has(a.asset_name)) {
-      attrOf.set(a.asset_name, a.flexible_items[key]?.trim() || "未設定");
+): GroupRatio[] {
+  const groups = new Map<string, GroupRatio>();
+
+  for (const a of heldAssets) {
+    const label = a.flexible_items[key]?.trim() || "—";
+    const g = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
+    groups.set(label, {
+      ...g,
+      currentRatio: g.currentRatio + a.current_ratio,
+      currentValue: g.currentValue + a.current_value_base,
+    });
+  }
+
+  if (scenario) {
+    const attrOf = new Map<string, string>();
+    for (const a of allAssets) {
+      if (!attrOf.has(a.asset_name)) {
+        attrOf.set(a.asset_name, a.flexible_items[key]?.trim() || "—");
+      }
+    }
+    for (const [name, ratio] of Object.entries(scenario.targets)) {
+      if (!ratio) continue;
+      const label = attrOf.get(name) ?? "—";
+      const g = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
+      groups.set(label, { ...g, targetRatio: g.targetRatio + ratio });
     }
   }
-  const map = new Map<string, number>();
-  for (const [name, ratio] of Object.entries(scenario.targets)) {
-    if (!ratio) continue;
-    const label = attrOf.get(name) ?? "未設定";
-    map.set(label, (map.get(label) ?? 0) + ratio);
-  }
-  return Array.from(map.entries())
-    .map(([name, value]) => ({ name, value: Math.round(value * 10) / 10 }))
-    .filter((e) => e.value > 0);
+
+  return Array.from(groups.values()).sort((a, b) => b.currentRatio - a.currentRatio);
 }
 
 function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
@@ -122,7 +131,7 @@ function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
             ))}
           </Pie>
           <Tooltip
-            formatter={(value) => typeof value === "number" ? `${value.toFixed(1)}%` : value}
+            formatter={(v) => typeof v === "number" ? `${v.toFixed(1)}%` : v}
             contentStyle={{ backgroundColor: "#111827", border: "1px solid #374151", borderRadius: "8px" }}
             labelStyle={{ color: "#9ca3af" }}
           />
@@ -133,12 +142,9 @@ function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
   );
 }
 
-type RatioBarProps = { current: number; target: number };
-function RatioBar({ current, target }: RatioBarProps) {
-  const diff = current - target;
-  const barColor =
-    Math.abs(diff) <= 5 ? "bg-blue-500" :
-    diff > 0 ? "bg-yellow-500" : "bg-red-500";
+function RatioBar({ current, target }: { current: number; target: number }) {
+  const diff     = current - target;
+  const barColor = Math.abs(diff) <= 5 ? "bg-blue-500" : diff > 0 ? "bg-yellow-500" : "bg-red-500";
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
@@ -147,12 +153,9 @@ function RatioBar({ current, target }: RatioBarProps) {
           style={{ width: `${Math.min(Math.max(current, 0), 100)}%` }}
         />
       </div>
-      <span className="text-xs tabular-nums w-12 text-right text-gray-300">
-        {current.toFixed(1)}%
-      </span>
+      <span className="text-xs tabular-nums w-12 text-right text-gray-300">{current.toFixed(1)}%</span>
       <span className={`text-xs tabular-nums w-16 text-right font-medium ${
-        Math.abs(diff) <= 5 ? "text-gray-500" :
-        diff > 0 ? "text-yellow-400" : "text-red-400"
+        Math.abs(diff) <= 5 ? "text-gray-500" : diff > 0 ? "text-yellow-400" : "text-red-400"
       }`}>
         {diff > 0 ? "+" : ""}{diff.toFixed(1)}%
       </span>
@@ -163,21 +166,19 @@ function RatioBar({ current, target }: RatioBarProps) {
 export default function AssetsPage() {
   const { latest, loading } = useSnapshot();
   const { t } = useI18n();
-  const ccy = latest?.base_currency ?? "JPY";
-  const fmt = (n: number) => formatAmount(n, ccy);
   const [activeScenario, setActiveScenario] = useState<number>(0);
-  const [groupKey, setGroupKey]             = useState<string>("asset");
+  const [groupKey, setGroupKey]             = useState<string | null>(null);
 
-  // フックはすべて早期リターンより前に呼ぶ（Rules of Hooks）
   const allAssets: Asset[]    = latest?.assets_data ?? [];
   const scenarios: Scenario[] = latest?.scenario_data ?? [];
   const currentScenario       = scenarios[activeScenario];
+  const ccy = latest?.base_currency ?? "JPY";
+  const fmt = (n: number) => formatAmount(n, ccy);
 
   const heldAssets = useMemo(
     () => mergeAssets(allAssets.filter((a) => !a.is_watchlist)),
     [allAssets]
   );
-  // 比率バー用：口座をまたいで同一アセット名を合算
   const heldAssetsByName = useMemo(
     () => mergeAssetsByName(allAssets.filter((a) => !a.is_watchlist)),
     [allAssets]
@@ -198,22 +199,32 @@ export default function AssetsPage() {
     return Array.from(keys);
   }, [allAssets]);
 
+  // デフォルトは最初の自由項目、なければアセット別
+  const effectiveKey = groupKey ?? (attrKeys[0] ?? "asset");
+
   const currentPieData: PieEntry[] = useMemo(() => {
-    if (groupKey === "asset") {
+    if (effectiveKey === "asset") {
       return heldAssets.filter((a) => a.current_ratio > 0).map((a) => ({ name: a.asset_name, value: a.current_ratio }));
     }
-    return groupByAttr(heldAssets, groupKey);
-  }, [heldAssets, groupKey]);
+    const groups = calcGroupRatios(heldAssets, allAssets, undefined, effectiveKey);
+    return groups.filter((g) => g.currentRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.currentRatio * 10) / 10 }));
+  }, [heldAssets, allAssets, effectiveKey]);
 
   const scenarioPieData: PieEntry[] = useMemo(() => {
     if (!currentScenario) return [];
-    if (groupKey === "asset") {
-      return Object.entries(currentScenario.targets)
-        .filter(([, v]) => v > 0)
-        .map(([name, value]) => ({ name, value }));
+    if (effectiveKey === "asset") {
+      return Object.entries(currentScenario.targets).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
     }
-    return groupScenarioByAttr(currentScenario, allAssets, groupKey);
-  }, [currentScenario, allAssets, groupKey]);
+    const groups = calcGroupRatios(heldAssets, allAssets, currentScenario, effectiveKey);
+    return groups.filter((g) => g.targetRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.targetRatio * 10) / 10 }));
+  }, [currentScenario, heldAssets, allAssets, effectiveKey]);
+
+  const groupRatios: GroupRatio[] = useMemo(() => {
+    if (effectiveKey === "asset") return [];
+    return calcGroupRatios(heldAssets, allAssets, currentScenario, effectiveKey);
+  }, [heldAssets, allAssets, currentScenario, effectiveKey]);
+
+  const getTarget = (assetName: string) => currentScenario?.targets[assetName] ?? 0;
 
   if (loading) return <p className="text-gray-500 text-sm">{t.loading}</p>;
   if (!latest) return (
@@ -222,14 +233,6 @@ export default function AssetsPage() {
       <p className="text-gray-500 text-sm mt-2">{t.noDataHint}</p>
     </div>
   );
-
-  const getTarget = (assetName: string): number =>
-    currentScenario?.targets[assetName] ?? 0;
-
-  const calcMoveAmount = (asset: Asset): number => {
-    const diff = getTarget(asset.asset_name) - asset.current_ratio;
-    return (diff / 100) * totalValue;
-  };
 
   return (
     <>
@@ -248,9 +251,7 @@ export default function AssetsPage() {
                 key={s.name}
                 onClick={() => setActiveScenario(i)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeScenario === i
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-800 text-gray-400 hover:text-white"
+                  activeScenario === i ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"
                 }`}
               >
                 {s.name}
@@ -276,19 +277,19 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* 円グラフ */}
+      {/* 配分比較グラフ */}
       {currentScenario && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-gray-400">{t.allocComparison}</h3>
             <div className="flex items-center gap-2 flex-wrap justify-end">
               <span className="text-xs text-gray-600">{t.groupBy}</span>
-              {["asset", ...attrKeys].map((key) => (
+              {[...(attrKeys.length > 0 ? attrKeys : []), "asset"].map((key) => (
                 <button
                   key={key}
                   onClick={() => setGroupKey(key)}
                   className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    groupKey === key
+                    effectiveKey === key
                       ? "bg-gray-700 text-white"
                       : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
                   }`}
@@ -305,53 +306,82 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* 比率バー + 移動金額 */}
+      {/* リバランス指示 */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-sm font-medium text-gray-400">{t.ratioVsTarget}</h3>
           <p className="text-xs text-gray-600">{t.totalInvested}: {fmt(totalValue)}</p>
         </div>
-        <div className="space-y-5">
-          {heldAssetsByName.map((asset) => {
-            const target      = getTarget(asset.asset_name);
-            const diff        = asset.current_ratio - target;
-            const moveAmount  = calcMoveAmount(asset);
-            const needsAction = target > 0 && Math.abs(diff) > 5;
 
-            return (
-              <div key={asset.asset_name}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{asset.asset_name}</span>
-                    {asset.ticker && (
-                      <span className="text-xs text-gray-500 font-mono">{asset.ticker}</span>
-                    )}
-                    <span className="text-xs text-gray-600">{asset.account}</span>
+        {/* 属性グループ別リバランス */}
+        {effectiveKey !== "asset" && groupRatios.length > 0 ? (
+          <div className="space-y-5">
+            {groupRatios.map((g) => {
+              const diff        = g.currentRatio - g.targetRatio;
+              const moveAmount  = ((g.targetRatio - g.currentRatio) / 100) * totalValue;
+              const needsAction = g.targetRatio > 0 && Math.abs(diff) > 5;
+              return (
+                <div key={g.name}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium">{g.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{fmt(g.currentValue)}</span>
+                      {g.targetRatio > 0 && (
+                        <span className="text-xs text-gray-500">{t.targetLabel(g.targetRatio)}</span>
+                      )}
+                      {needsAction && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          diff > 0 ? "bg-yellow-400/10 text-yellow-400" : "bg-red-400/10 text-red-400"
+                        }`}>
+                          {diff > 0
+                            ? t.sellNote(fmt(Math.abs(moveAmount)))
+                            : t.buyNote(fmt(Math.abs(moveAmount)))}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">{fmt(asset.current_value_base)}</span>
-                    <span className="text-xs text-gray-500">{t.targetLabel(target)}</span>
-                    {needsAction && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        diff > 0
-                          ? "bg-yellow-400/10 text-yellow-400"
-                          : "bg-red-400/10 text-red-400"
-                      }`}>
-                        {diff > 0
-                          ? t.sellNote(fmt(Math.abs(moveAmount)))
-                          : t.buyNote(fmt(Math.abs(moveAmount)))}
-                      </span>
-                    )}
-                  </div>
+                  <RatioBar current={g.currentRatio} target={g.targetRatio} />
                 </div>
-                <RatioBar current={asset.current_ratio} target={target} />
-                {asset.investment_memo && (
-                  <p className="text-xs text-gray-600 mt-1 ml-0.5">{asset.investment_memo}</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* アセット別リバランス（フォールバック） */
+          <div className="space-y-5">
+            {heldAssetsByName.map((asset) => {
+              const target      = getTarget(asset.asset_name);
+              const diff        = asset.current_ratio - target;
+              const moveAmount  = ((target - asset.current_ratio) / 100) * totalValue;
+              const needsAction = target > 0 && Math.abs(diff) > 5;
+              return (
+                <div key={asset.asset_name}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{asset.asset_name}</span>
+                      {asset.ticker && <span className="text-xs text-gray-500 font-mono">{asset.ticker}</span>}
+                      <span className="text-xs text-gray-600">{asset.account}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{fmt(asset.current_value_base)}</span>
+                      <span className="text-xs text-gray-500">{t.targetLabel(target)}</span>
+                      {needsAction && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          diff > 0 ? "bg-yellow-400/10 text-yellow-400" : "bg-red-400/10 text-red-400"
+                        }`}>
+                          {diff > 0 ? t.sellNote(fmt(Math.abs(moveAmount))) : t.buyNote(fmt(Math.abs(moveAmount)))}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <RatioBar current={asset.current_ratio} target={target} />
+                  {asset.investment_memo && (
+                    <p className="text-xs text-gray-600 mt-1 ml-0.5">{asset.investment_memo}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 検討中アセット */}
@@ -370,15 +400,11 @@ export default function AssetsPage() {
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{asset.asset_name}</span>
-                      {asset.ticker && (
-                        <span className="text-xs text-gray-500 font-mono">{asset.ticker}</span>
-                      )}
+                      {asset.ticker && <span className="text-xs text-gray-500 font-mono">{asset.ticker}</span>}
                       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/10 text-blue-400">{t.notHeld}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {target > 0 && (
-                        <span className="text-xs text-gray-500">{t.scenarioTarget(target)}</span>
-                      )}
+                      {target > 0 && <span className="text-xs text-gray-500">{t.scenarioTarget(target)}</span>}
                       {buyAmount !== null && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-green-400/10 text-green-400">
                           {t.buyConsider(fmt(buyAmount))}
@@ -386,9 +412,7 @@ export default function AssetsPage() {
                       )}
                     </div>
                   </div>
-                  {asset.investment_memo && (
-                    <p className="text-xs text-gray-400 mt-1">{asset.investment_memo}</p>
-                  )}
+                  {asset.investment_memo && <p className="text-xs text-gray-400 mt-1">{asset.investment_memo}</p>}
                 </div>
               );
             })}

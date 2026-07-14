@@ -76,38 +76,25 @@ function mergeAssetsByName(assets: Asset[]): Asset[] {
   }));
 }
 
-// 属性キーでグループ別の現在比率・目標比率を集計
+// 保有アセットを基準に属性グループ別の現在比率・目標比率を集計
+// heldByName は口座をまたいで同一アセット名を合算済みのリスト
 function calcGroupRatios(
-  heldAssets: Asset[],
-  allAssets: Asset[],
+  heldByName: Asset[],
   scenario: Scenario | undefined,
   key: string
 ): GroupRatio[] {
   const groups = new Map<string, GroupRatio>();
 
-  for (const a of heldAssets) {
-    const label = a.flexible_items[key]?.trim() || "—";
-    const g = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
+  for (const a of heldByName) {
+    const label  = a.flexible_items[key]?.trim() || "—";
+    const target = scenario?.targets[a.asset_name] ?? 0;
+    const g      = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
     groups.set(label, {
-      ...g,
+      name:         label,
       currentRatio: g.currentRatio + a.current_ratio,
+      targetRatio:  g.targetRatio  + target,
       currentValue: g.currentValue + a.current_value_base,
     });
-  }
-
-  if (scenario) {
-    const attrOf = new Map<string, string>();
-    for (const a of allAssets) {
-      if (!attrOf.has(a.asset_name)) {
-        attrOf.set(a.asset_name, a.flexible_items[key]?.trim() || "—");
-      }
-    }
-    for (const [name, ratio] of Object.entries(scenario.targets)) {
-      if (!ratio) continue;
-      const label = attrOf.get(name) ?? "—";
-      const g = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
-      groups.set(label, { ...g, targetRatio: g.targetRatio + ratio });
-    }
   }
 
   return Array.from(groups.values()).sort((a, b) => b.currentRatio - a.currentRatio);
@@ -204,25 +191,27 @@ export default function AssetsPage() {
 
   const currentPieData: PieEntry[] = useMemo(() => {
     if (effectiveKey === "asset") {
-      return heldAssets.filter((a) => a.current_ratio > 0).map((a) => ({ name: a.asset_name, value: a.current_ratio }));
+      return heldAssetsByName.filter((a) => a.current_ratio > 0).map((a) => ({ name: a.asset_name, value: a.current_ratio }));
     }
-    const groups = calcGroupRatios(heldAssets, allAssets, undefined, effectiveKey);
+    const groups = calcGroupRatios(heldAssetsByName, undefined, effectiveKey);
     return groups.filter((g) => g.currentRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.currentRatio * 10) / 10 }));
-  }, [heldAssets, allAssets, effectiveKey]);
+  }, [heldAssetsByName, effectiveKey]);
 
   const scenarioPieData: PieEntry[] = useMemo(() => {
     if (!currentScenario) return [];
     if (effectiveKey === "asset") {
-      return Object.entries(currentScenario.targets).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
+      return heldAssetsByName
+        .filter((a) => (currentScenario.targets[a.asset_name] ?? 0) > 0)
+        .map((a) => ({ name: a.asset_name, value: currentScenario.targets[a.asset_name] }));
     }
-    const groups = calcGroupRatios(heldAssets, allAssets, currentScenario, effectiveKey);
+    const groups = calcGroupRatios(heldAssetsByName, currentScenario, effectiveKey);
     return groups.filter((g) => g.targetRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.targetRatio * 10) / 10 }));
-  }, [currentScenario, heldAssets, allAssets, effectiveKey]);
+  }, [currentScenario, heldAssetsByName, effectiveKey]);
 
   const groupRatios: GroupRatio[] = useMemo(() => {
     if (effectiveKey === "asset") return [];
-    return calcGroupRatios(heldAssets, allAssets, currentScenario, effectiveKey);
-  }, [heldAssets, allAssets, currentScenario, effectiveKey]);
+    return calcGroupRatios(heldAssetsByName, currentScenario, effectiveKey);
+  }, [heldAssetsByName, currentScenario, effectiveKey]);
 
   const getTarget = (assetName: string) => currentScenario?.targets[assetName] ?? 0;
 

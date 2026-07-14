@@ -77,7 +77,6 @@ function mergeAssetsByName(assets: Asset[]): Asset[] {
 }
 
 // 保有アセットを基準に属性グループ別の現在比率・目標比率を集計
-// heldByName は口座をまたいで同一アセット名を合算済みのリスト
 function calcGroupRatios(
   heldByName: Asset[],
   scenario: Scenario | undefined,
@@ -85,16 +84,34 @@ function calcGroupRatios(
 ): GroupRatio[] {
   const groups = new Map<string, GroupRatio>();
 
+  // 現在比率を集計
   for (const a of heldByName) {
-    const label  = a.flexible_items[key]?.trim() || "—";
-    const target = scenario?.targets[a.asset_name] ?? 0;
-    const g      = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
+    const label = a.flexible_items[key]?.trim() || "—";
+    const g     = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
     groups.set(label, {
       name:         label,
       currentRatio: g.currentRatio + a.current_ratio,
-      targetRatio:  g.targetRatio  + target,
+      targetRatio:  g.targetRatio,
       currentValue: g.currentValue + a.current_value_base,
     });
+  }
+
+  // 目標比率を集計
+  // シナリオのキーは asset_name でも ticker でもありうるので両方で照合する
+  if (scenario) {
+    const keyToLabel = new Map<string, string>();
+    for (const a of heldByName) {
+      const label = a.flexible_items[key]?.trim() || "—";
+      keyToLabel.set(a.asset_name, label);
+      if (a.ticker) keyToLabel.set(a.ticker, label);
+    }
+
+    for (const [name, ratio] of Object.entries(scenario.targets)) {
+      if (!ratio) continue;
+      const label = keyToLabel.get(name) ?? "—";
+      const g     = groups.get(label) ?? { name: label, currentRatio: 0, targetRatio: 0, currentValue: 0 };
+      groups.set(label, { ...g, targetRatio: g.targetRatio + ratio });
+    }
   }
 
   return Array.from(groups.values()).sort((a, b) => b.currentRatio - a.currentRatio);

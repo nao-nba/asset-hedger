@@ -8,10 +8,30 @@ import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
-const COLORS = [
-  "#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa",
-  "#fb923c", "#38bdf8", "#4ade80", "#e879f9", "#94a3b8",
+const PALETTE = [
+  "#3b82f6", // blue
+  "#22c55e", // green
+  "#f59e0b", // amber
+  "#ef4444", // red
+  "#8b5cf6", // violet
+  "#f97316", // orange
+  "#06b6d4", // cyan
+  "#ec4899", // pink
+  "#84cc16", // lime
+  "#14b8a6", // teal
+  "#a855f7", // purple
+  "#eab308", // yellow
 ];
+
+// 名前リストから name→color の一意マップを生成
+function buildColorMap(names: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  let i = 0;
+  for (const name of names) {
+    if (!map.has(name)) map.set(name, PALETTE[i++ % PALETTE.length]);
+  }
+  return map;
+}
 
 type PieEntry = { name: string; value: number };
 
@@ -110,7 +130,15 @@ function calcGroupRatios(
   return Array.from(groups.values()).sort((a, b) => b.currentRatio - a.currentRatio);
 }
 
-function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
+function AssetPieChart({
+  data,
+  title,
+  colorMap,
+}: {
+  data: PieEntry[];
+  title: string;
+  colorMap: Map<string, string>;
+}) {
   return (
     <div className="flex-1">
       <p className="text-xs text-gray-500 text-center mb-2">{title}</p>
@@ -123,8 +151,8 @@ function AssetPieChart({ data, title }: { data: PieEntry[]; title: string }) {
             paddingAngle={2}
             dataKey="value"
           >
-            {data.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
+            {data.map((entry) => (
+              <Cell key={entry.name} fill={colorMap.get(entry.name) ?? "#94a3b8"} />
             ))}
           </Pie>
           <Tooltip
@@ -243,6 +271,15 @@ export default function AssetsPage() {
     return calcGroupRatios(heldAssetsByName, currentScenario, effectiveKey);
   }, [heldAssetsByName, currentScenario, effectiveKey]);
 
+  // 左右のパイで同じ名前が同じ色になるよう共有カラーマップを生成
+  const pieColorMap = useMemo(() => {
+    const allNames = [
+      ...currentPieData.map((d) => d.name),
+      ...scenarioPieData.map((d) => d.name),
+    ];
+    return buildColorMap(allNames);
+  }, [currentPieData, scenarioPieData]);
+
   const getTarget = (assetName: string) => currentScenario?.targets[assetName] ?? 0;
 
   if (loading) return <p className="text-gray-500 text-sm">{t.loading}</p>;
@@ -319,8 +356,8 @@ export default function AssetsPage() {
             </div>
           </div>
           <div className="flex gap-4">
-            <AssetPieChart data={currentPieData} title={t.currentAlloc} />
-            <AssetPieChart data={scenarioPieData} title={t.targetAlloc(currentScenario.name)} />
+            <AssetPieChart data={currentPieData} title={t.currentAlloc} colorMap={pieColorMap} />
+            <AssetPieChart data={scenarioPieData} title={t.targetAlloc(currentScenario.name)} colorMap={pieColorMap} />
           </div>
         </div>
       )}

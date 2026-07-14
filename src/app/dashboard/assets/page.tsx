@@ -338,15 +338,17 @@ export default function AssetsPage() {
             {groupRatios.map((g) => {
               const diff        = g.currentRatio - g.targetRatio;
               const moveAmount  = ((g.targetRatio - g.currentRatio) / 100) * totalValue;
+              const targetValue = (g.targetRatio / 100) * totalValue;
               const needsAction = g.targetRatio > 0 && Math.abs(diff) > 5;
               return (
                 <div key={g.name}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium">{g.name}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{fmt(g.currentValue)}</span>
-                      {g.targetRatio > 0 && (
-                        <span className="text-xs text-gray-500">{t.targetLabel(g.targetRatio)}</span>
+                      {g.targetRatio > 0 ? (
+                        <span className="text-xs text-gray-500">{fmt(g.currentValue)} → {fmt(targetValue)}</span>
+                      ) : (
+                        <span className="text-xs text-gray-500">{fmt(g.currentValue)}</span>
                       )}
                       {needsAction && (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -381,8 +383,11 @@ export default function AssetsPage() {
                       <span className="text-xs text-gray-600">{asset.account}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{fmt(asset.current_value_base)}</span>
-                      <span className="text-xs text-gray-500">{t.targetLabel(target)}</span>
+                      {target > 0 ? (
+                        <span className="text-xs text-gray-500">{fmt(asset.current_value_base)} → {fmt((target / 100) * totalValue)}</span>
+                      ) : (
+                        <span className="text-xs text-gray-500">{fmt(asset.current_value_base)}</span>
+                      )}
                       {needsAction && (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                           diff > 0 ? "bg-yellow-400/10 text-yellow-400" : "bg-red-400/10 text-red-400"

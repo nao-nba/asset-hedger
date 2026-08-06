@@ -260,13 +260,23 @@ export default function AssetsPage() {
     return groups.filter((g) => g.currentRatio > 0).map((g) => ({ name: g.name, value: Math.round(g.currentRatio * 10) / 10 }));
   }, [heldAssetsByName, effectiveKey]);
 
-  // 目標パイ: scenario.targets のキーが属性値なのでそのまま使う（左右共通）
+  // 目標パイ: 左（現在）の名前順に合わせてソートすることで同じ位置に同じ属性が来る
   const scenarioPieData: PieEntry[] = useMemo(() => {
     if (!currentScenario) return [];
-    return Object.entries(currentScenario.targets)
+    const raw = Object.entries(currentScenario.targets)
       .filter(([, v]) => v > 0)
       .map(([name, value]) => ({ name, value: value as number }));
-  }, [currentScenario]);
+    // 現在パイの名前順を基準にソート（現在にない項目は末尾）
+    const nameOrder = currentPieData.map((d) => d.name);
+    return raw.sort((a, b) => {
+      const ia = nameOrder.indexOf(a.name);
+      const ib = nameOrder.indexOf(b.name);
+      if (ia === -1 && ib === -1) return 0;
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  }, [currentScenario, currentPieData]);
 
   const groupRatios: GroupRatio[] = useMemo(() => {
     if (effectiveKey === "asset") return [];

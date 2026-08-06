@@ -15,14 +15,10 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
-  const waitingFunds = latest ? sum(latest.summary_data.investment_funds ?? []) : null;
-  const assetsFunds  = latest
+  const investFunds = latest
     ? latest.assets_data
         .filter((a) => !a.is_watchlist)
         .reduce((acc, a) => acc + a.current_value_base, 0)
-    : null;
-  const investFunds = (waitingFunds !== null && assetsFunds !== null)
-    ? waitingFunds + assetsFunds
     : null;
 
   const livingFunds = latest ? sum(latest.summary_data.living_funds) : null;
@@ -37,11 +33,9 @@ export default function DashboardPage() {
   const liquidityRatio = livingFunds !== null && totalDebt ? livingFunds / totalDebt : null;
 
   const chartData = history.map((s) => {
-    const invest =
-      sum(s.summary_data.investment_funds ?? []) +
-      s.assets_data
-        .filter((a) => !a.is_watchlist)
-        .reduce((acc, a) => acc + a.current_value_base, 0);
+    const invest = s.assets_data
+      .filter((a) => !a.is_watchlist)
+      .reduce((acc, a) => acc + a.current_value_base, 0);
     const living = sum(s.summary_data.living_funds);
     return {
       date: s.snapshot_date,
@@ -101,19 +95,14 @@ export default function DashboardPage() {
           </div>
 
           {/* サマリーカード下段 */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            {[
-              { label: t.investmentFunds, value: investFunds,   color: "text-yellow-400", note: t.investmentNote },
-              { label: t.waitingFunds,    value: waitingFunds,  color: "text-orange-400", note: t.waitingNote },
-            ].map(({ label, value, color, note }) => (
-              <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                <p className="text-xs text-gray-400">{label}</p>
-                <p className={`text-xl font-bold mt-1 ${color}`}>
-                  {value !== null ? fmt(value) : "--"}
-                </p>
-                <p className="text-xs text-gray-600 mt-1">{note}</p>
-              </div>
-            ))}
+          <div className="mb-8">
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+              <p className="text-xs text-gray-400">{t.investmentFunds}</p>
+              <p className="text-xl font-bold mt-1 text-yellow-400">
+                {investFunds !== null ? fmt(investFunds) : "--"}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">{t.investmentNote}</p>
+            </div>
           </div>
 
           {/* 財務健全性 */}

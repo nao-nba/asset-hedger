@@ -35,11 +35,11 @@ const translations = {
 
     netAssets:        "純資産",
     totalAssets:      "総資産",
-    livingFunds:      "生活資金",
+    livingFunds:      "生活防衛資金",
     investmentFunds:  "投資資金（合計）",
     waitingFunds:     "うち 待機資金",
-    totalAssetsNote:  "生活資金＋投資資金",
-    investmentNote:   "待機資金(現金)＋明細の評価額",
+    totalAssetsNote:  "生活防衛資金＋投資資金",
+    investmentNote:   "明細の評価額合計",
     waitingNote:      "証券口座の現金・MRFなど",
     debtNote:         "※負債を含む",
 
@@ -117,11 +117,11 @@ const translations = {
 
     netAssets:        "Net Assets",
     totalAssets:      "Total Assets",
-    livingFunds:      "Living Funds",
+    livingFunds:      "Emergency Fund",
     investmentFunds:  "Investment (total)",
     waitingFunds:     "  Cash Reserve",
-    totalAssetsNote:  "Living + Investment",
-    investmentNote:   "Cash + portfolio value",
+    totalAssetsNote:  "Emergency Fund + Investment",
+    investmentNote:   "Portfolio value total",
     waitingNote:      "Cash / MRF in brokerage",
     debtNote:         "* incl. liabilities",
 

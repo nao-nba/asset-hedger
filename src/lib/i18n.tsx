@@ -1,7 +1,22 @@
+// ============================================================
+// このファイルの役割（国際化 / i18n）:
+//   アプリ内に表示するすべての文言を日本語・英語の2言語で管理する。
+//   i18n = internationalization（国際化）の略。
+//
+//   仕組みの流れ:
+//   1. translations オブジェクトに「ja」と「en」の文言をすべて書く
+//   2. I18nProvider がReactのContext（アプリ全体に共有できる入れ物）として
+//      現在の言語(lang)と文言セット(t)を保持する
+//   3. 各ページやコンポーネントは useI18n() を呼ぶだけで
+//      t.login や t.pageTitle のように文言を取得できる
+//   4. setLang("en") を呼ぶと全ページの言語が一斉に切り替わる
+// ============================================================
+
 "use client";
 
 import { createContext, useContext, useState, ReactNode } from "react";
 
+// 対応言語の型。"ja"か"en"のどちらかしか入れられない
 export type Lang = "ja" | "en";
 
 const translations = {
@@ -169,8 +184,12 @@ const translations = {
     colCurrency:      "CCY",
     colValue:         "Value",
   },
+// satisfies は「このオブジェクトがRecord<Lang, Translations>の形に合っているか」を
+// ビルド時に確認する（jaとenで項目が揃っていないとエラーになる）
 } satisfies Record<Lang, Translations>;
 
+// すべての翻訳キーと型を定義するインターフェース
+// ここに書かれていないキーはtranslationsオブジェクトに追加してもエラーになる
 export type Translations = {
   appTagline: string;
   login: string; register: string; email: string; password: string;
@@ -199,27 +218,38 @@ export type Translations = {
   colPrice: string; colCurrency: string; colValue: string;
 };
 
+// Contextに格納するデータの型
 type I18nContextType = {
-  lang: Lang;
-  setLang: (l: Lang) => void;
-  t: Translations;
+  lang: Lang;              // 現在の言語（"ja" or "en"）
+  setLang: (l: Lang) => void; // 言語を切り替える関数
+  t: Translations;         // 現在の言語の文言セット
 };
 
+// Contextオブジェクトを作成（初期値はja）
+// createContext = Reactの機能。コンポーネントツリーのどこからでも
+// 値を読み書きできる「グローバルな入れ物」を作る
 const I18nContext = createContext<I18nContextType>({
   lang: "ja",
   setLang: () => {},
   t: translations.ja,
 });
 
+// I18nProvider: アプリ全体をこれで囲むことで、
+// 子コンポーネントすべてから useI18n() で言語・文言にアクセスできるようになる。
+// src/app/layout.tsx でアプリ全体を囲んでいる。
 export function I18nProvider({ children }: { children: ReactNode }) {
+  // useState で現在の言語を管理（初期値: "ja"）
   const [lang, setLang] = useState<Lang>("ja");
   return (
+    // Providerの value に lang・setLang・t（選択中の文言）を渡す
     <I18nContext.Provider value={{ lang, setLang, t: translations[lang] }}>
       {children}
     </I18nContext.Provider>
   );
 }
 
+// useI18n: 各ページやコンポーネントから呼ぶカスタムフック。
+// const { t, lang, setLang } = useI18n(); と書けばどこでも使える。
 export function useI18n() {
   return useContext(I18nContext);
 }
